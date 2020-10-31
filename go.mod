@@ -1,4 +1,4 @@
-module github.com/42wim/sagent
+module github.com/IxDay/janus
 
 go 1.13
 
