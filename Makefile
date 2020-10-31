@@ -14,10 +14,10 @@ ssh-decrypt:
 	@go build -ldflags '$(LDFLAGS)' -o $@ cmd/decrypt.go
 
 $(PREFIX)/bin/janus: janus
-	install -p -D -m 0750 $< $@
+	install -p -D -m 0755 $< $@
 
 $(PREFIX)/bin/ssh-decrypt: ssh-decrypt
-	install -p -D -m 0750 $< $@
+	install -p -D -m 0755 $< $@
 
 .PHONY: clean
 clean:
