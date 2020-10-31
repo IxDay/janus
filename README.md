@@ -22,3 +22,6 @@ You can run a simple development server by issuing the following commands:
 - build the binary: `make`
 - define an environment variable: `export SSH_AUTH_SOCK="$(pwd)/agent.sock"`
 - run the binary: `./janus`
+
+Alternatively, once the repository is cloned you can just type `make run` to 
+launch the binary.

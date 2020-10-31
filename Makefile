@@ -14,7 +14,7 @@ $(PREFIX)/bin/janus: janus
 
 .PHONY: clean
 clean:
-	rm -f janus coverage.out
+	rm -f janus coverage.out agent.sock
 
 .PHONY: coverage.out
 coverage.out:
@@ -34,3 +34,7 @@ fmt:
 
 .PHONY: test
 test: cover vet fmt 
+
+.PHONY: run	
+run: janus
+	@SSH_AUTH_SOCK="$(shell pwd)/agent.sock" ./janus
