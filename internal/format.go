@@ -5,7 +5,7 @@
 // https://developers.google.com/open-source/licenses/bsd
 
 // Package format implements the age file format.
-package main
+package internal
 
 import (
 	"bufio"

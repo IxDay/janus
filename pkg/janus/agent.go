@@ -1,4 +1,4 @@
-package main
+package janus
 
 import (
 	"bytes"
@@ -15,6 +15,8 @@ import (
 	"filippo.io/age/agessh"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+
+	"github.com/IxDay/janus/internal"
 )
 
 type SSHAgent struct {
@@ -30,6 +32,11 @@ type sshKey struct {
 }
 
 var ErrLocked = errors.New("agent locked")
+var ErrInternal = errors.New("internal error")
+
+const ExtensionAge = "decrypt@age-tool.com"
+
+const EnvSSHAuthSock = "SSH_AUTH_SOCK"
 
 func NewSSHAgent() *SSHAgent { return &SSHAgent{keys: map[string]*sshKey{}} }
 
@@ -161,10 +168,11 @@ func (s *SSHAgent) Signers() (out []ssh.Signer, _ error) {
 }
 
 func (s *SSHAgent) Extension(extensionType string, contents []byte) ([]byte, error) {
-	if extensionType != "decrypt@age-tool.com" {
+	if extensionType != ExtensionAge {
+		log.Printf("unsupported: %q", extensionType)
 		return nil, agent.ErrExtensionUnsupported
 	}
-	headers, _, err := Parse(bytes.NewBuffer(contents))
+	headers, _, err := internal.Parse(bytes.NewBuffer(contents))
 	if err != nil {
 		return nil, err
 	}
@@ -185,12 +193,12 @@ func (s *SSHAgent) Extension(extensionType string, contents []byte) ([]byte, err
 		}
 	}
 
-	return nil, agent.ErrExtensionUnsupported
+	return nil, ErrInternal
 }
 
 func sshFingerprint(pk ssh.PublicKey) string {
 	h := sha256.Sum256(pk.Marshal())
-	return EncodeToString(h[:4])
+	return internal.EncodeToString(h[:4])
 }
 
 func identity(key interface{}) (age.Identity, error) {

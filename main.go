@@ -10,15 +10,13 @@ import (
 
 	"github.com/pkg/errors"
 	ssh "golang.org/x/crypto/ssh/agent"
-)
 
-const (
-	EnvSSHAuthSock = "SSH_AUTH_SOCK"
+	"github.com/IxDay/janus/pkg/janus"
 )
 
 func main() {
-	ctx := WithInterrupt(context.Background())
-	agent := NewSSHAgent()
+	ctx := janus.WithInterrupt(context.Background())
+	agent := janus.NewSSHAgent()
 	cb := func(conn net.Conn) error {
 		if err := ssh.ServeAgent(agent, conn); err != nil && err != io.EOF {
 			return err
@@ -33,18 +31,18 @@ func main() {
 
 func listen(ctx context.Context, cb func(net.Conn) error) error {
 	syscall.Umask(0077)
-	listener, err := net.Listen("unix", os.Getenv(EnvSSHAuthSock))
+	listener, err := net.Listen("unix", os.Getenv(janus.EnvSSHAuthSock))
 	if err != nil {
 		return errors.Wrap(err, "failed to open socket")
 	}
 	defer listener.Close()
-	defer os.Remove(os.Getenv(EnvSSHAuthSock))
+	defer os.Remove(os.Getenv(janus.EnvSSHAuthSock))
 	log.Printf("start listening")
 	conns, errs := accept(listener)
 	for {
 		select {
 		case <-ctx.Done():
-			if err := ctx.Err(); err == Interrupted {
+			if err := ctx.Err(); err == janus.Interrupted {
 				return nil
 			} else {
 				return errors.Wrap(ctx.Err(), "stop listening")

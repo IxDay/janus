@@ -2,19 +2,26 @@ LDFLAGS ?= -w -s -X main.BuildDate=$(shell date +%F)
 PREFIX ?= /usr
 
 all: build
-build: janus
-install: $(PREFIX)/bin/janus
+build: janus ssh-decrypt
+install: $(PREFIX)/bin/janus $(PREFIX)/bin/ssh-decrypt
 
 .PHONY: janus
 janus:
 	@go build  -ldflags '$(LDFLAGS)' -o $@ *.go
 
+.PHONY: ssh-decrypt
+ssh-decrypt:
+	@go build -ldflags '$(LDFLAGS)' -o $@ cmd/decrypt.go
+
 $(PREFIX)/bin/janus: janus
+	install -p -D -m 0750 $< $@
+
+$(PREFIX)/bin/ssh-decrypt: ssh-decrypt
 	install -p -D -m 0750 $< $@
 
 .PHONY: clean
 clean:
-	rm -f janus coverage.out agent.sock
+	rm -f janus ssh-decrypt coverage.out agent.sock
 
 .PHONY: coverage.out
 coverage.out:
