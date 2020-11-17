@@ -4,20 +4,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
-
-	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/IxDay/janus/pkg/janus"
 )
 
 func main() {
-	conn, err := net.Dial("unix", os.Getenv(janus.EnvSSHAuthSock))
-	if err != nil {
-		log.Fatalf("failed to connect to agent: %q", err)
-	}
-	client, err := agent.NewClient(conn), err
+	client, err := janus.NewClient()
 	if err != nil {
 		log.Fatalf("failed to instanciate client: %q", err)
 	}
