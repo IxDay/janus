@@ -2,19 +2,50 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	ssh "golang.org/x/crypto/ssh/agent"
 
 	"github.com/IxDay/janus/pkg/janus"
 )
 
-func main() {
+const (
+	// EnvPrefix is prefix for all the environments variables (see 12 factor app).
+	EnvPrefix = "JANUS"
+)
+
+var (
+	command = &cobra.Command{
+		Short: "SSH Agent with extension support",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// https://github.com/spf13/cobra/issues/340
+			cmd.SilenceUsage = true
+
+			return run()
+		},
+	}
+)
+
+func init() {
+	flags := command.PersistentFlags()
+	flags.BoolP("debug", "d", false, "Trigger debug logs")
+
+	viper.SetEnvPrefix(EnvPrefix)
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	_ = viper.BindPFlag("debug", flags.Lookup("debug"))
+}
+
+func run() error {
 	ctx := janus.WithInterrupt(context.Background())
 	agent := janus.NewSSHAgent()
 	cb := func(conn net.Conn) error {
@@ -23,11 +54,24 @@ func main() {
 		}
 		return nil
 	}
-	if err := listen(ctx, cb); err != nil {
-		log.Printf("failed to listen: %q", err)
+	cfg, err := config()
+	if err != nil {
+		return err
+	}
+	if cfg.Debug {
+		log.Printf("debug mode enabled")
+	}
+	return listen(ctx, cb)
+}
+
+func main() {
+	if err := command.Execute(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "%+v\n", err)
 		os.Exit(1)
 	}
 }
+
+func config() (config Configuration, _ error) { return config, viper.Unmarshal(&config) }
 
 func listen(ctx context.Context, cb func(net.Conn) error) error {
 	syscall.Umask(0077)
