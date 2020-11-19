@@ -23,5 +23,4 @@ func (c Configuration) NewLogger() (*zap.Logger, error) {
 		config.EncoderConfig.TimeKey = zapcore.OmitKey
 	}
 	return config.Build()
-
 }

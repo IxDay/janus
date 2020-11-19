@@ -3,7 +3,6 @@ package janus
 import (
 	"context"
 	"errors"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -39,8 +38,6 @@ func init() {
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-interrupt
-		os.Stdout.WriteString("\n")
-		log.Printf("interruption")
 		for _, ctx := range contexts {
 			ctx.interrupted = true
 			ctx.cancel()

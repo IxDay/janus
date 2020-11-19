@@ -2,17 +2,21 @@ package janus
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"errors"
+	"io"
 	"io/ioutil"
-	"log"
+	"net"
 	"sync"
+
+	"github.com/pkg/errors"
 
 	"filippo.io/age"
 	"filippo.io/age/agessh"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
@@ -20,9 +24,12 @@ import (
 )
 
 type SSHAgent struct {
-	mu   sync.RWMutex
-	keys map[string]*sshKey
-	pass []byte
+	mu      sync.RWMutex
+	keys    map[string]*sshKey
+	pass    []byte
+	logger  *zap.Logger
+	context context.Context
+	cancel  context.CancelFunc
 }
 
 type sshKey struct {
@@ -38,10 +45,49 @@ const ExtensionAge = "decrypt@age-tool.com"
 
 const EnvSSHAuthSock = "SSH_AUTH_SOCK"
 
-func NewSSHAgent() *SSHAgent { return &SSHAgent{keys: map[string]*sshKey{}} }
+func NewSSHAgent(logger *zap.Logger) *SSHAgent {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &SSHAgent{keys: map[string]*sshKey{}, logger: logger,
+		context: ctx, cancel: cancel,
+	}
+}
+
+func (s *SSHAgent) Close() { s.cancel() }
+
+func (s *SSHAgent) Serve(listener net.Listener) error {
+	conns, errs := make(chan net.Conn), make(chan error)
+	go func() {
+		for {
+			if conn, err := listener.Accept(); err != nil {
+				errs <- err
+			} else {
+				conns <- conn
+			}
+		}
+	}()
+	for {
+		select {
+		case <-s.context.Done():
+			if err := s.context.Err(); err == context.Canceled {
+				return nil
+			} else {
+				return errors.Wrap(s.context.Err(), "stop listening")
+			}
+		case conn := <-conns:
+			s.logger.Info("receiving new connection")
+			go func(conn net.Conn) {
+				if err := agent.ServeAgent(s, conn); err != nil && err != io.EOF {
+					errs <- err
+				}
+			}(conn)
+		case err := <-errs:
+			return errors.Wrap(err, "unexpected error")
+		}
+	}
+
+}
 
 func (s *SSHAgent) List() (keys []*agent.Key, err error) {
-	log.Println("List()")
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -65,7 +111,8 @@ func (s *SSHAgent) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) 
 }
 
 func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
-	log.Println("Sign()")
+	s.logger.Debug("signing key", zap.Uint32("flags", uint32(flags)),
+		zap.ByteString("key", key.Marshal()))
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.pass != nil {
@@ -75,7 +122,7 @@ func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Sig
 	wanted := key.Marshal()
 	for _, k := range s.keys {
 		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
-			log.Println("Found a matching key", k.comment, "for", key)
+			s.logger.Debug("found a matching key", zap.String("comment", k.comment))
 		}
 		sig, err := k.signer.Sign(rand.Reader, data)
 		if err != nil {
@@ -87,7 +134,7 @@ func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Sig
 }
 
 func (s *SSHAgent) Add(key agent.AddedKey) error {
-	log.Println("Add()", key.Comment)
+	s.logger.Debug("adding new key", zap.String("comment", key.Comment))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pass != nil {
@@ -96,7 +143,7 @@ func (s *SSHAgent) Add(key agent.AddedKey) error {
 
 	signer, err := ssh.NewSignerFromKey(key.PrivateKey)
 	if err != nil {
-		log.Fatalf("newsignerfromkey failed: %s", err)
+		s.logger.Error("newsignerfromkey failed", zap.Error(err))
 	}
 	s.keys[sshFingerprint(signer.PublicKey())] = &sshKey{
 		signer:  signer,
@@ -107,7 +154,7 @@ func (s *SSHAgent) Add(key agent.AddedKey) error {
 }
 
 func (s *SSHAgent) Remove(key ssh.PublicKey) error {
-	log.Println("Remove()", key)
+	s.logger.Debug("removing a key", zap.ByteString("key", key.Marshal()))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pass != nil {
@@ -122,7 +169,7 @@ func (s *SSHAgent) Remove(key ssh.PublicKey) error {
 }
 
 func (s *SSHAgent) RemoveAll() error {
-	log.Println("RemoveAll()")
+	s.logger.Debug("removing all keys")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pass != nil {
@@ -133,7 +180,7 @@ func (s *SSHAgent) RemoveAll() error {
 }
 
 func (s *SSHAgent) Lock(passphrase []byte) error {
-	log.Println("Lock()")
+	s.logger.Debug("locking agent")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pass != nil {
@@ -144,7 +191,7 @@ func (s *SSHAgent) Lock(passphrase []byte) error {
 }
 
 func (s *SSHAgent) Unlock(passphrase []byte) error {
-	log.Println("Unlock()")
+	s.logger.Debug("unlocking agent")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !bytes.Equal(passphrase, s.pass) {
@@ -155,7 +202,7 @@ func (s *SSHAgent) Unlock(passphrase []byte) error {
 }
 
 func (s *SSHAgent) Signers() (out []ssh.Signer, _ error) {
-	log.Println("Signers()")
+	s.logger.Debug("returning signers")
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.pass != nil {
@@ -169,7 +216,7 @@ func (s *SSHAgent) Signers() (out []ssh.Signer, _ error) {
 
 func (s *SSHAgent) Extension(extensionType string, contents []byte) ([]byte, error) {
 	if extensionType != ExtensionAge {
-		log.Printf("unsupported: %q", extensionType)
+		s.logger.Error("unsupported extension", zap.String("type", extensionType))
 		return nil, agent.ErrExtensionUnsupported
 	}
 	headers, _, err := internal.Parse(bytes.NewBuffer(contents))
