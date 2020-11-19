@@ -38,11 +38,13 @@ var (
 func init() {
 	flags := command.PersistentFlags()
 	flags.BoolP("debug", "d", false, "Trigger debug logs")
+	flags.BoolP("no-timestamp", "", false, "Disable timestamp on logs")
 
 	viper.SetEnvPrefix(EnvPrefix)
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	_ = viper.BindPFlag("debug", flags.Lookup("debug"))
+	_ = viper.BindPFlag("no_timestamp", flags.Lookup("no-timestamp"))
 }
 
 func run() error {
@@ -58,9 +60,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if cfg.Debug {
-		log.Printf("debug mode enabled")
+	logger, err := cfg.NewLogger()
+	if err != nil {
+		return err
 	}
+	logger.Debug("debug mode enabled")
 	return listen(ctx, cb)
 }
 
