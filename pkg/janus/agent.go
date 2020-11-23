@@ -112,8 +112,8 @@ func (s *SSHAgent) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) 
 }
 
 func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
-	s.logger.Debug("signing key", zap.Uint32("flags", uint32(flags)),
-		zap.Stringer("key", marshal(key)))
+	s.logger.Debug("signing key", zap.Stringer("key", marshal(key)),
+		zap.Stringer("flags", LogSignatureFlags(flags)))
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.pass != nil {

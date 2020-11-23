@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 type StringerFunc func() string
@@ -25,4 +26,23 @@ func marshalPrivate(key interface{}) fmt.Stringer {
 		}
 		return marshal(signer.PublicKey()).String()
 	})
+}
+
+type LogSignatureFlags agent.SignatureFlags
+
+func (lsf LogSignatureFlags) String() string {
+	out, underlying := "", agent.SignatureFlags(lsf)
+	if underlying&agent.SignatureFlagReserved == agent.SignatureFlagReserved {
+		out += "|reserved"
+	}
+	if underlying&agent.SignatureFlagRsaSha256 == agent.SignatureFlagRsaSha256 {
+		out += "|rsa-sha256"
+	}
+	if underlying&agent.SignatureFlagRsaSha512 == agent.SignatureFlagRsaSha512 {
+		out += "|rsa-sha256"
+	}
+	if out == "" {
+		return "none"
+	}
+	return out[1:]
 }
