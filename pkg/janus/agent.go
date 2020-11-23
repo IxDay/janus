@@ -112,7 +112,7 @@ func (s *SSHAgent) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) 
 
 func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
 	s.logger.Debug("signing key", zap.Uint32("flags", uint32(flags)),
-		zap.ByteString("key", key.Marshal()))
+		zap.Stringer("key", marshal(key)))
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.pass != nil {
@@ -124,6 +124,7 @@ func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Sig
 		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
 			s.logger.Debug("found a matching key", zap.String("comment", k.comment))
 		}
+		s.logger.Debug("found a matching key", zap.Stringer("key", marshal(k.signer.PublicKey())))
 		sig, err := k.signer.Sign(rand.Reader, data)
 		if err != nil {
 			return sig, err
@@ -134,7 +135,7 @@ func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Sig
 }
 
 func (s *SSHAgent) Add(key agent.AddedKey) error {
-	s.logger.Debug("adding new key", zap.String("comment", key.Comment))
+	s.logger.Debug("adding new key", zap.Stringer("key", marshalPrivate(key.PrivateKey)))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pass != nil {
@@ -154,7 +155,7 @@ func (s *SSHAgent) Add(key agent.AddedKey) error {
 }
 
 func (s *SSHAgent) Remove(key ssh.PublicKey) error {
-	s.logger.Debug("removing a key", zap.ByteString("key", key.Marshal()))
+	s.logger.Debug("removing a key", zap.Stringer("key", marshal(key)))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pass != nil {
