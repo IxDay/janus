@@ -88,6 +88,7 @@ func (s *SSHAgent) Serve(listener net.Listener) error {
 }
 
 func (s *SSHAgent) List() (keys []*agent.Key, err error) {
+	s.logger.Debug("listing keys")
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -116,21 +117,25 @@ func (s *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Sig
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.pass != nil {
+		s.logger.Debug("agent is locked, aborting")
 		return nil, ErrLocked
 	}
 
 	wanted := key.Marshal()
 	for _, k := range s.keys {
-		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
-			s.logger.Debug("found a matching key", zap.String("comment", k.comment))
+		if !bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
+			s.logger.Debug("key not matching skipping")
+			continue
 		}
 		s.logger.Debug("found a matching key", zap.Stringer("key", marshal(k.signer.PublicKey())))
 		sig, err := k.signer.Sign(rand.Reader, data)
 		if err != nil {
+			s.logger.Error("failed to sign key", zap.Error(err))
 			return sig, err
 		}
-		return sig, err
+		return sig, nil
 	}
+	s.logger.Error("key was not found in the agent")
 	return nil, errors.New("not found")
 }
 
